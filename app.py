@@ -5,7 +5,6 @@ import uuid
 from square.client import Client
 import os
 
-
 app = Flask(__name__)
 CORS(app)
 app.secret_key = '2abceVR5ENE7FgMxXdMwuzUJKC2g8xgy'
@@ -178,12 +177,27 @@ def items(item_id):
         version_id = result.body['object']['version']
 
         try:
+            item_name = request.json['name']
+        except:
+            item_name = result.body['object']['item_data']['name']
+
+        variations = result.body['object']['item_data']['variations']
+        try:
+            price_value = request.json['price']
+        except:
+            price_value = variations[0]['item_variation_data']['price_money']['amount']
+
+        try:
             cat_id = request.json['category_id']
         except:
             cat_id = result.body['object']['item_data']['category_id']
 
-        variations = result.body['object']['item_data']['variations']
-        variations[0]['item_variation_data']['price_money']['amount'] = request.json['price']
+        try:
+            tax_id = [request.json['tax_id']]
+        except:
+            tax_id = [result.body['object']['item_data']['tax_ids'][0]]
+
+        variations[0]['item_variation_data']['price_money']['amount'] = price_value
         result = app.config['client'].catalog.batch_upsert_catalog_objects(
             body = {
                 "idempotency_key": str(idempotency_key),
@@ -193,9 +207,10 @@ def items(item_id):
                         "id": item_id,
                         "version": version_id,
                         "item_data": {
-                            "name": request.json['name'],
+                            "name": item_name,
                             "category_id":cat_id,
-                            "variations":variations
+                            "variations":variations,
+                            "tax_ids":tax_id
                         }
                     }]
                 }]
@@ -207,6 +222,24 @@ def items(item_id):
             object_id = item_id
         )
         return jsonify(result.body)
+
+@app.route('/v1/orders', methods=['POST'])
+def orders():
+    idempotency_key = uuid.uuid4()
+    print(request.json)
+    result = app.config['client'].orders.create_order(
+        body = {
+            "order": {
+                "location_id": "L75ER37CRBXNX",
+                "line_items": request.json['line_items'],
+                "taxes": request.json['taxes']
+            },
+            "idempotency_key": str(idempotency_key)
+        }
+    )
+    order_id = result.body['order']['id']
+    print(order_id)
+    return jsonify(result.body)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', debug=True)
